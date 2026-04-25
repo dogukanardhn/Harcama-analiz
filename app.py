@@ -45,37 +45,11 @@ def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
         st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_h], ignore_index=True)
         st.rerun()
 
-# 3. YAN MENÜ (SOL SÜTUN) - Tümü Aile Paneliyle Aynı Hizada!
+# 3. YAN MENÜ (SADECE AİLE PANELİ)
 st.sidebar.title("🏡 Aile Paneli")
 kullanici = st.sidebar.radio("👤 Kim Kullanıyor?", ["Doğukan", "Eşim"])
-st.sidebar.divider()
 
-st.sidebar.header("➕ Yeni Harcama")
-with st.sidebar.form("veri_giris_formu", clear_on_submit=True):
-    # Kategori girdisini diğer girdilerin (Tarih, Açıklama vs.) üstüne aldım
-    kategori = st.selectbox("Kategori Seçimi", kategoriler)
-    tarih = st.date_input("İşlem Tarihi")
-    aciklama = st.text_input("Açıklama", placeholder="Örn: Mutfak robotu, benzin...")
-    tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
-    if st.form_submit_button("Harcamayı Kaydet"):
-        if aciklama:
-            yeni_v = pd.DataFrame([{'TARİH': tarih.strftime("%d.%m.%Y"), 'KİŞİ': kullanici, 'KATEGORİ': kategori, 'AÇIKLAMA': aciklama.upper(), 'TUTAR': float(tutar)}])
-            st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_v], ignore_index=True)
-            st.sidebar.success("Kaydedildi!")
-
-st.sidebar.header("📌 İstek Gönder")
-with st.sidebar.form("istek_formu", clear_on_submit=True):
-    hedef = "Eşim" if kullanici == "Doğukan" else "Doğukan"
-    st.markdown(f"**Alıcı:** {hedef}")
-    metin = st.text_input("Ne lazım?", placeholder="Ekmek al, depoyu doldur...")
-    if st.form_submit_button("İsteği Gönder"):
-        if metin:
-            st.session_state.istek_id_sayaci += 1
-            yeni_i = pd.DataFrame([{'ID': st.session_state.istek_id_sayaci, 'KİMDEN': kullanici, 'KİME': hedef, 'İSTEK': metin, 'DURUM': 'Bekliyor ⏳'}])
-            st.session_state.istekler = pd.concat([st.session_state.istekler, yeni_i], ignore_index=True)
-            st.sidebar.success("Gönderildi!")
-
-# 4. ANA EKRAN
+# 4. ANA EKRAN BAŞLANGICI VE BİLDİRİMLER
 st.title("💳 Harcama Takibi")
 
 bekleyen = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
@@ -87,8 +61,38 @@ if not bekleyen.empty:
         if c2.button("✅ Karşıla", key=f"b_{row['ID']}"):
             gorev_tamamla_penceresi(row['ID'], row['İSTEK'], kullanici)
 
+# 5. FORMLAR ARTIK ANA EKRANDA (Yan Yana İki Sütun)
+form_col1, form_col2 = st.columns(2, gap="large")
+
+with form_col1:
+    st.subheader("➕ Yeni Harcama Ekle")
+    with st.form("veri_giris_formu", clear_on_submit=True):
+        kategori = st.selectbox("Kategori Seçimi", kategoriler)
+        tarih = st.date_input("İşlem Tarihi")
+        aciklama = st.text_input("Açıklama", placeholder="Örn: Mutfak robotu, benzin...")
+        tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
+        if st.form_submit_button("Harcamayı Kaydet"):
+            if aciklama:
+                yeni_v = pd.DataFrame([{'TARİH': tarih.strftime("%d.%m.%Y"), 'KİŞİ': kullanici, 'KATEGORİ': kategori, 'AÇIKLAMA': aciklama.upper(), 'TUTAR': float(tutar)}])
+                st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_v], ignore_index=True)
+                st.success("Harcama başarıyla eklendi!")
+
+with form_col2:
+    st.subheader("📌 Yeni İstek Gönder")
+    with st.form("istek_formu", clear_on_submit=True):
+        hedef = "Eşim" if kullanici == "Doğukan" else "Doğukan"
+        st.markdown(f"**Alıcı:** {hedef}")
+        metin = st.text_input("Ne lazım?", placeholder="Ekmek al, depoyu doldur...")
+        if st.form_submit_button("İsteği Gönder"):
+            if metin:
+                st.session_state.istek_id_sayaci += 1
+                yeni_i = pd.DataFrame([{'ID': st.session_state.istek_id_sayaci, 'KİMDEN': kullanici, 'KİME': hedef, 'İSTEK': metin, 'DURUM': 'Bekliyor ⏳'}])
+                st.session_state.istekler = pd.concat([st.session_state.istekler, yeni_i], ignore_index=True)
+                st.success("İstek başarıyla iletildi!")
+
 st.markdown("---")
 
+# 6. SEKMELER SATIRI (Formların Hemen Altında)
 sekmeler = st.tabs(["💬 Görevler", "📈 Grafikler", "📊 Tüm Liste", "👰 Çeyiz", "🛒 Market", "⛽ Yakıt", "🍔 Yemek"])
 s_grv, s_grf, s_lst, s_dug, s_mrk, s_ykt, s_ymk = sekmeler
 
