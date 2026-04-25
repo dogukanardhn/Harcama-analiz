@@ -3,10 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 
-# 1. SAYFA VE TEMA AYARLARI
-st.set_page_config(page_title="Aile Finans Asistanı", page_icon="💎", layout="wide", initial_sidebar_state="collapsed")
+# 1. SAYFA VE TEMA AYARLARI (Menü artık başlangıçta hep AÇIK kalacak)
+st.set_page_config(page_title="Aile Finans Asistanı", page_icon="💎", layout="wide", initial_sidebar_state="expanded")
 
-# Mobil cihazlarda sol menüyü hamburger ikonu içine otomatik saklar, ekranı ferahlatır.
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -95,7 +94,6 @@ with st.sidebar:
     sayfa = st.radio("Alan Seçin:", ["📈 Özet Paneli", "💬 Görevler", "📊 Tüm Liste", "👰 Düğün & Çeyiz", "🛒 Market", "⛽ Akaryakıt", "🍔 Yemek & Kafe", "📱 Teknoloji", "🎓 Eğitim", "💧 Su & Fatura"])
 
 # 4. ANA EKRAN (DASHBOARD)
-# Gelişmiş Ay/Yıl Filtresi
 mevcut_aylar = st.session_state.harcamalar['AY_YIL'].unique().tolist()
 su_an = datetime.datetime.now().strftime("%m-%Y")
 if su_an not in mevcut_aylar: mevcut_aylar.append(su_an)
@@ -106,11 +104,9 @@ with col_baslik:
 with col_filtre:
     secilen_donem = st.selectbox("📅 Dönem Filtresi", sorted(mevcut_aylar, reverse=True))
 
-# Seçilen döneme göre verileri filtrele
 df = st.session_state.harcamalar
 df_aylik = df[df['AY_YIL'] == secilen_donem]
 
-# Bildirimler (Hep En Üstte)
 bekleyen = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
 if not bekleyen.empty:
     st.error(f"🔔 Dikkat! Bekleyen {len(bekleyen)} görevin var!")
@@ -122,7 +118,6 @@ if not bekleyen.empty:
 
 st.divider()
 
-# --- YARDIMCI FONKSİYON (Zincirin Dışına, Üste Alındı!) ---
 def kategori_goster(kat_anahtar, emoji):
     d_kat = df_aylik[df_aylik['KATEGORİ'] == kat_anahtar]
     if not d_kat.empty:
@@ -130,12 +125,8 @@ def kategori_goster(kat_anahtar, emoji):
         st.dataframe(d_kat, use_container_width=True)
     else: st.info(f"Bu ay {kat_anahtar} kategorisinde harcama yok.")
 
-
-# --- SAYFA İÇERİKLERİ (Kesintisiz Zincir) ---
 if sayfa == "📈 Özet Paneli":
     toplam_harcama = df_aylik['TUTAR'].sum()
-    
-    # Akıllı Bütçe Barı Hesaplaması
     yuzde = min(toplam_harcama / aylik_limit, 1.0)
     
     st.subheader(f"Hedef Bütçe Durumu ({secilen_donem})")
@@ -145,7 +136,6 @@ if sayfa == "📈 Özet Paneli":
     col_a.metric("Aylık Harcama", f"{toplam_harcama:,.2f} TL")
     col_b.metric("Kalan Bütçe", f"{(aylik_limit - toplam_harcama):,.2f} TL")
     
-    # Düğün & Çeyiz Genel Toplamı (Filtresiz, Bugüne Kadarki Tüm Masraf)
     dugun_toplam = df[df['KATEGORİ'] == "DÜĞÜN & ÇEYİZ"]['TUTAR'].sum()
     col_c.metric("👰 Toplam Çeyiz Masrafı", f"{dugun_toplam:,.2f} TL")
     
