@@ -24,13 +24,11 @@ def verileri_yukle():
     h_df = conn.read(worksheet="Harcamalar", ttl="1m")
     i_df = conn.read(worksheet="Istekler", ttl="1m")
     
-    # KORUMA KALKANI: Eğer Excel tamamen boşsa, başlıkları kod kendisi oluştursun (Çökmeyi engeller)
     if 'AY_YIL' not in h_df.columns:
         h_df = pd.DataFrame(columns=['TARİH', 'AY_YIL', 'KİŞİ', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
     if 'ID' not in i_df.columns:
         i_df = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
         
-    # Excel'deki fazladan boş satırları temizle
     h_df = h_df.dropna(how='all')
     i_df = i_df.dropna(how='all')
     
@@ -45,7 +43,8 @@ kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "DÜĞÜN & ÇEY
 def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
     st.write(f"**Görev:** {istek_metni}")
     secilen_kat = st.selectbox("Hangi kategori?", kategoriler)
-    girilen_tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
+    # KURUŞLAR SİLİNDİ, TAM SAYI YAPILDI (min_value=0)
+    girilen_tutar = st.number_input("Tutar (TL)", min_value=0, step=10)
     if st.button("Kaydet ve Veritabanına Yaz"):
         df_istekler.loc[df_istekler['ID'] == istek_id, 'DURUM'] = 'Tamamlandı ✅'
         conn.update(worksheet="Istekler", data=df_istekler)
@@ -70,7 +69,8 @@ with st.sidebar:
     kullanici = st.radio("👤 Kim Kullanıyor?", ["Doğukan", "Aybüke"])
     
     st.divider()
-    aylik_limit = st.number_input("🎯 Bütçe Hedefi (TL)", min_value=1000, value=30000, step=1000)
+    # BÜTÇE 210.000 TL OLARAK SABİTLENDİ
+    aylik_limit = st.number_input("🎯 Bütçe Hedefi (TL)", min_value=0, value=210000, step=5000)
     
     st.divider()
     with st.expander("➕ Hızlı Harcama Gir"):
@@ -78,9 +78,11 @@ with st.sidebar:
             kat = st.selectbox("Kategori", kategoriler)
             tarih = st.date_input("Tarih")
             aciklama = st.text_input("Açıklama")
-            tutar = st.number_input("Tutar", min_value=0.0)
+            # KURUŞLAR SİLİNDİ, BOŞ GELMESİ SAĞLANDI
+            tutar = st.number_input("Tutar", min_value=0, value=None, placeholder="Örn: 500", step=10)
             if st.form_submit_button("Buluta Kaydet"):
-                if aciklama:
+                # Tutarın boş girilmesini engelledik
+                if aciklama and tutar is not None:
                     y_v = pd.DataFrame([{
                         'TARİH': tarih.strftime("%d.%m.%Y"), 
                         'AY_YIL': tarih.strftime("%m-%Y"),
@@ -146,7 +148,8 @@ st.divider()
 def kategori_goster(kat_anahtar, emoji, df_input):
     d_kat = df_input[df_input['KATEGORİ'] == kat_anahtar]
     if not d_kat.empty:
-        st.metric(f"{emoji} {kat_anahtar} Dönem Toplamı", f"{d_kat['TUTAR'].sum():,.2f} TL")
+        # Sonuçlardaki ,.2f (kuruş) ibaresi ,.0f yapılarak küsuratlar gizlendi
+        st.metric(f"{emoji} {kat_anahtar} Dönem Toplamı", f"{d_kat['TUTAR'].sum():,.0f} TL")
         st.dataframe(d_kat, use_container_width=True)
     else: st.info(f"Bu ay {kat_anahtar} kategorisinde harcama yok.")
 
@@ -157,11 +160,12 @@ if sayfa == "📈 Özet Paneli":
     st.progress(yuzde)
     
     col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Aylık Harcama", f"{toplam_harcama:,.2f} TL")
-    col_b.metric("Kalan Bütçe", f"{(aylik_limit - toplam_harcama):,.2f} TL")
+    # Sonuçlardaki ,.2f (kuruş) ibaresi ,.0f yapılarak küsuratlar gizlendi
+    col_a.metric("Aylık Harcama", f"{toplam_harcama:,.0f} TL")
+    col_b.metric("Kalan Bütçe", f"{(aylik_limit - toplam_harcama):,.0f} TL")
     
     dugun_toplam = df_harcamalar[df_harcamalar['KATEGORİ'] == "DÜĞÜN & ÇEYİZ"]['TUTAR'].sum() if not df_harcamalar.empty else 0
-    col_c.metric("👰 Toplam Çeyiz Masrafı", f"{dugun_toplam:,.2f} TL")
+    col_c.metric("👰 Toplam Çeyiz Masrafı", f"{dugun_toplam:,.0f} TL")
     
     if not df_aylik.empty and toplam_harcama > 0:
         c1, c2 = st.columns(2)
