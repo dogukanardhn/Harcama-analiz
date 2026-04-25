@@ -17,24 +17,28 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# 2. GOOGLE SHEETS BAĞLANTISI VE BOŞ TABLO KORUMASI
+# 2. GOOGLE SHEETS BAĞLANTISI VE VERİ YÜKLEME
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def verileri_yukle():
     h_df = conn.read(worksheet="Harcamalar", ttl="1m")
     i_df = conn.read(worksheet="Istekler", ttl="1m")
+    a_df = conn.read(worksheet="Ayarlar", ttl="1m") # Ayarları oku
     
+    # Boş tablo korumaları
     if 'AY_YIL' not in h_df.columns:
         h_df = pd.DataFrame(columns=['TARİH', 'AY_YIL', 'KİŞİ', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
     if 'ID' not in i_df.columns:
         i_df = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
-        
-    h_df = h_df.dropna(how='all')
-    i_df = i_df.dropna(how='all')
     
-    return h_df, i_df
+    # Bütçe hafızası: Eğer Ayarlar sayfası boşsa varsayılan 210.000 olsun
+    kayitli_butce = 210000
+    if not a_df.empty and 'BUTCE' in a_df.columns:
+        kayitli_butce = int(a_df['BUTCE'].iloc[0])
+        
+    return h_df.dropna(how='all'), i_df.dropna(how='all'), kayitli_butce
 
-df_harcamalar, df_istekler = verileri_yukle()
+df_harcamalar, df_istekler, aktif_butce_degeri = verileri_yukle()
 
 kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "DÜĞÜN & ÇEYİZ", "TEKNOLOJİ", "EĞİTİM", "SU & FATURA", "SAĞLIK", "DİĞER"]
 
@@ -43,24 +47,18 @@ kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "DÜĞÜN & ÇEY
 def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
     st.write(f"**Görev:** {istek_metni}")
     secilen_kat = st.selectbox("Hangi kategori?", kategoriler)
-    # KURUŞLAR SİLİNDİ, TAM SAYI YAPILDI (min_value=0)
     girilen_tutar = st.number_input("Tutar (TL)", min_value=0, step=10)
-    if st.button("Kaydet ve Veritabanına Yaz"):
+    if st.button("Kaydet"):
         df_istekler.loc[df_istekler['ID'] == istek_id, 'DURUM'] = 'Tamamlandı ✅'
         conn.update(worksheet="Istekler", data=df_istekler)
-        
         bugun = datetime.datetime.now()
         yeni_h = pd.DataFrame([{
-            'TARİH': bugun.strftime("%d.%m.%Y"), 
-            'AY_YIL': bugun.strftime("%m-%Y"),
-            'KİŞİ': aktif_kullanici, 
-            'KATEGORİ': secilen_kat, 
-            'AÇIKLAMA': f"Görev: {istek_metni}", 
-            'TUTAR': float(girilen_tutar)
+            'TARİH': bugun.strftime("%d.%m.%Y"), 'AY_YIL': bugun.strftime("%m-%Y"),
+            'KİŞİ': aktif_kullanici, 'KATEGORİ': secilen_kat, 
+            'AÇIKLAMA': f"Görev: {istek_metni}", 'TUTAR': float(girilen_tutar)
         }])
         guncel_h = pd.concat([df_harcamalar, yeni_h], ignore_index=True)
         conn.update(worksheet="Harcamalar", data=guncel_h)
-        st.success("Veritabanı güncellendi!")
         st.rerun()
 
 # 3. SOL SÜTUN (KONTROL MERKEZİ)
@@ -69,8 +67,16 @@ with st.sidebar:
     kullanici = st.radio("👤 Kim Kullanıyor?", ["Doğukan", "Aybüke"])
     
     st.divider()
-    # BÜTÇE 210.000 TL OLARAK SABİTLENDİ
-    aylik_limit = st.number_input("🎯 Bütçe Hedefi (TL)", min_value=0, value=210000, step=5000)
+    # BÜTÇE AYARI: Değeri artık Excel'den (aktif_butce_degeri) alıyor
+    yeni_limit = st.number_input("🎯 Bütçe Hedefi (TL)", min_value=0, value=aktif_butce_degeri, step=5000)
+    
+    # Bütçe değişirse Excel'e kaydetme butonu
+    if yeni_limit != aktif_butce_degeri:
+        if st.button("💾 Yeni Bütçeyi Kalıcı Yap"):
+            yeni_ayarlar = pd.DataFrame([{'BUTCE': yeni_limit}])
+            conn.update(worksheet="Ayarlar", data=yeni_ayarlar)
+            st.success("Bütçe kalıcı olarak kaydedildi!")
+            st.rerun()
     
     st.divider()
     with st.expander("➕ Hızlı Harcama Gir"):
@@ -78,14 +84,11 @@ with st.sidebar:
             kat = st.selectbox("Kategori", kategoriler)
             tarih = st.date_input("Tarih")
             aciklama = st.text_input("Açıklama")
-            # KURUŞLAR SİLİNDİ, BOŞ GELMESİ SAĞLANDI
-            tutar = st.number_input("Tutar", min_value=0, value=None, placeholder="Örn: 500", step=10)
+            tutar = st.number_input("Tutar", min_value=0, value=None, placeholder="Sadece rakam girin", step=10)
             if st.form_submit_button("Buluta Kaydet"):
-                # Tutarın boş girilmesini engelledik
                 if aciklama and tutar is not None:
                     y_v = pd.DataFrame([{
-                        'TARİH': tarih.strftime("%d.%m.%Y"), 
-                        'AY_YIL': tarih.strftime("%m-%Y"),
+                        'TARİH': tarih.strftime("%d.%m.%Y"), 'AY_YIL': tarih.strftime("%m-%Y"),
                         'KİŞİ': kullanici, 'KATEGORİ': kat, 'AÇIKLAMA': aciklama.upper(), 'TUTAR': float(tutar)
                     }])
                     guncel_h = pd.concat([df_harcamalar, y_v], ignore_index=True)
@@ -117,7 +120,6 @@ with st.sidebar:
 # 4. ANA EKRAN VE AKILLI DÖNEM SEÇİCİ
 taban_aylar = [f"{str(m).zfill(2)}-2026" for m in range(4, 13)] 
 mevcut_aylar = df_harcamalar['AY_YIL'].dropna().unique().tolist() if not df_harcamalar.empty else []
-
 for ay in taban_aylar:
     if ay not in mevcut_aylar: mevcut_aylar.append(ay)
 
@@ -148,21 +150,20 @@ st.divider()
 def kategori_goster(kat_anahtar, emoji, df_input):
     d_kat = df_input[df_input['KATEGORİ'] == kat_anahtar]
     if not d_kat.empty:
-        # Sonuçlardaki ,.2f (kuruş) ibaresi ,.0f yapılarak küsuratlar gizlendi
         st.metric(f"{emoji} {kat_anahtar} Dönem Toplamı", f"{d_kat['TUTAR'].sum():,.0f} TL")
         st.dataframe(d_kat, use_container_width=True)
     else: st.info(f"Bu ay {kat_anahtar} kategorisinde harcama yok.")
 
 if sayfa == "📈 Özet Paneli":
     toplam_harcama = df_aylik['TUTAR'].sum() if not df_aylik.empty else 0
-    yuzde = min(toplam_harcama / aylik_limit, 1.0) if aylik_limit > 0 else 0.0
+    # Oranlamada artık yeni_limit (Excel'den gelen) kullanılıyor
+    yuzde = min(toplam_harcama / yeni_limit, 1.0) if yeni_limit > 0 else 0.0
     st.subheader(f"Bütçe Durumu ({secilen_donem})")
     st.progress(yuzde)
     
     col_a, col_b, col_c = st.columns(3)
-    # Sonuçlardaki ,.2f (kuruş) ibaresi ,.0f yapılarak küsuratlar gizlendi
     col_a.metric("Aylık Harcama", f"{toplam_harcama:,.0f} TL")
-    col_b.metric("Kalan Bütçe", f"{(aylik_limit - toplam_harcama):,.0f} TL")
+    col_b.metric("Kalan Bütçe", f"{(yeni_limit - toplam_harcama):,.0f} TL")
     
     dugun_toplam = df_harcamalar[df_harcamalar['KATEGORİ'] == "DÜĞÜN & ÇEYİZ"]['TUTAR'].sum() if not df_harcamalar.empty else 0
     col_c.metric("👰 Toplam Çeyiz Masrafı", f"{dugun_toplam:,.0f} TL")
@@ -183,8 +184,7 @@ if sayfa == "📈 Özet Paneli":
 elif sayfa == "💬 Görevler":
     if not df_istekler.empty:
         st.dataframe(df_istekler.drop(columns=['ID']), use_container_width=True)
-    else:
-        st.info("Henüz bekleyen veya tamamlanan görev yok.")
+    else: st.info("Henüz görev yok.")
 
 elif sayfa == "📊 Tüm Liste":
     st.dataframe(df_aylik, use_container_width=True)
