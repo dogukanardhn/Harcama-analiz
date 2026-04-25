@@ -60,7 +60,6 @@ def kategori_goster(kat_anahtar, emoji, df_input):
 # 3. SOL SÜTUN (KONTROL MERKEZİ)
 with st.sidebar:
     st.title("⚙️ Kontrol Paneli")
-    # Kullanıcılar "Doğukan" ve "Aybüke" olarak güncellendi!
     kullanici = st.radio("👤 Kim Kullanıyor?", ["Doğukan", "Aybüke"])
     
     st.divider()
@@ -85,7 +84,6 @@ with st.sidebar:
 
     with st.expander("📌 Yeni Görev İste"):
         with st.form("i_form", clear_on_submit=True):
-            # Hedef kişi dinamik olarak Aybüke veya Doğukan seçiliyor
             hedef = "Aybüke" if kullanici == "Doğukan" else "Doğukan"
             metin = st.text_input(f"{hedef} için istek:")
             if st.form_submit_button("Gönder"):
@@ -104,35 +102,36 @@ with st.sidebar:
     st.subheader("📁 Menü")
     sayfa = st.radio("Alan Seçin:", ["📈 Özet Paneli", "💬 Görevler", "📊 Tüm Liste", "👰 Düğün & Çeyiz", "🛒 Market", "⛽ Akaryakıt", "🍔 Yemek & Kafe", "📱 Teknoloji", "🎓 Eğitim", "💧 Su & Fatura"])
 
-# 4. ANA EKRAN VE AKILLI DÖNEM FİLTRESİ
-# 04-2026'dan yıl sonuna kadar olan ayları sisteme tanıtalım
+# 4. ANA EKRAN VE AKILLI DÖNEM SEÇİCİ
 taban_aylar = [f"{str(m).zfill(2)}-2026" for m in range(4, 13)] 
 mevcut_aylar = st.session_state.harcamalar['AY_YIL'].unique().tolist()
-
 for ay in taban_aylar:
-    if ay not in mevcut_aylar:
-        mevcut_aylar.append(ay)
+    if ay not in mevcut_aylar: mevcut_aylar.append(ay)
 
-su_an = datetime.datetime.now().strftime("%m-%Y")
-if su_an not in mevcut_aylar: 
-    mevcut_aylar.append(su_an)
-
-# Ayları kronolojik olarak doğru sıralaması için gizli bir tarih çeviricisi
+# Ayları sırala (Büyükten küçüğe)
 mevcut_aylar_sirali = sorted(mevcut_aylar, key=lambda d: datetime.datetime.strptime(d, "%m-%Y"), reverse=True)
+
+# OTOMATİK AY TESPİTİ
+su_an = datetime.datetime.now().strftime("%m-%Y")
+try:
+    varsayilan_idx = mevcut_aylar_sirali.index(su_an)
+except ValueError:
+    varsayilan_idx = 0
 
 col_baslik, col_filtre = st.columns([3, 1])
 with col_baslik:
     st.title(f"💳 {sayfa}")
 with col_filtre:
-    secilen_donem = st.selectbox("📅 Dönem Filtresi", mevcut_aylar_sirali)
+    # index=varsayilan_idx sayesinde uygulama açıldığında otomatik olarak içinde bulunduğun ayı seçer
+    secilen_donem = st.selectbox("📅 Dönem Filtresi", mevcut_aylar_sirali, index=varsayilan_idx)
 
 df = st.session_state.harcamalar
 df_aylik = df[df['AY_YIL'] == secilen_donem]
 
-# BİLDİRİMLER (Aybüke ve Doğukan isimlerine duyarlı)
+# BİLDİRİMLER
 bekleyen = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
 if not bekleyen.empty:
-    st.error(f"🔔 Dikkat! Bekleyen {len(bekleyen)} görevin var!")
+    st.error(f"🔔 Dikkat! {kullanici}, bekleyen {len(bekleyen)} görevin var!")
     for idx, row in bekleyen.iterrows():
         c1, c2 = st.columns([5, 1])
         c1.warning(f"**{row['KİMDEN']}**: {row['İSTEK']}")
@@ -163,11 +162,11 @@ if sayfa == "📈 Özet Paneli":
             df_aylik.groupby('KATEGORİ')['TUTAR'].sum().plot(kind='pie', autopct='%1.1f%%', ax=ax1, cmap='Set3')
             ax1.set_ylabel(''); st.pyplot(fig1)
         with c2:
-            st.markdown("**Kişisel Harcama Dağılımı**")
+            st.markdown("**Bireysel Harcama Dağılımı**")
             fig2, ax2 = plt.subplots(figsize=(4,3))
             df_aylik.groupby('KİŞİ')['TUTAR'].sum().plot(kind='bar', ax=ax2, color=['#7ac5cd', '#ff9999'])
             plt.xticks(rotation=0); st.pyplot(fig2)
-    else: st.info("Veri yok.")
+    else: st.info(f"{secilen_donem} dönemine ait henüz veri yok. Sol taraftan harcama ekleyebilirsin.")
 
 elif sayfa == "💬 Görevler":
     st.dataframe(st.session_state.istekler.drop(columns=['ID']), use_container_width=True)
