@@ -90,4 +90,84 @@ with st.sidebar:
                     # SATIRLAR BÖLÜNDÜ (Tablet kopyalaması için güvenli)
                     y_i = pd.DataFrame([{
                         'ID': st.session_state.istek_id_sayaci, 
-                        'Kİ
+                        'KİMDEN': kullanici, 
+                        'KİME': hedef, 
+                        'İSTEK': metin, 
+                        'DURUM': 'Bekliyor ⏳'
+                    }])
+                    st.session_state.istekler = pd.concat([st.session_state.istekler, y_i], ignore_index=True)
+                    st.rerun()
+
+    st.divider()
+    
+    # NAVİGASYON MENÜSÜ
+    st.subheader("📁 Menü")
+    sayfa = st.radio("Gitmek istediğiniz alan:", [
+        "💬 Görevler Paneli",
+        "📈 Genel Grafikler",
+        "📊 Tüm Harcama Listesi",
+        "👰 Düğün & Çeyiz",
+        "🛒 Market",
+        "⛽ Akaryakıt",
+        "🍔 Yemek & Kafe",
+        "📱 Teknoloji",
+        "🎓 Eğitim",
+        "💧 Su & Fatura"
+    ])
+
+# 4. ANA EKRAN (Sağ Taraf)
+st.title(f"💳 {sayfa}")
+
+# Bildirimler
+bekleyen = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
+if not bekleyen.empty:
+    st.warning(f"🔔 Sana {len(bekleyen)} yeni görev var!")
+    for idx, row in bekleyen.iterrows():
+        c1, c2 = st.columns([5, 1])
+        c1.info(f"**{row['KİMDEN']}**: {row['İSTEK']}")
+        if c2.button("✅ Karşıla", key=f"b_{row['ID']}"):
+            gorev_tamamla_penceresi(row['ID'], row['İSTEK'], kullanici)
+
+st.divider()
+
+def kategori_goster(kat_anahtar, emoji):
+    d_kat = df[df['KATEGORİ'] == kat_anahtar]
+    if not d_kat.empty:
+        st.metric(f"{emoji} {kat_anahtar} Toplam", f"{d_kat['TUTAR'].sum():,.2f} TL")
+        st.dataframe(d_kat, use_container_width=True)
+    else: st.info(f"{kat_anahtar} kategorisinde henüz harcama yok.")
+
+# SAYFA İÇERİKLERİ
+df = st.session_state.harcamalar
+
+if sayfa == "💬 Görevler Paneli":
+    if not st.session_state.istekler.empty:
+        st.dataframe(st.session_state.istekler.drop(columns=['ID']), use_container_width=True)
+    else: st.info("Henüz bir görev kaydı yok.")
+
+elif sayfa == "📈 Genel Grafikler":
+    if not df.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Sektörel Dağılım")
+            fig1, ax1 = plt.subplots()
+            df.groupby('KATEGORİ')['TUTAR'].sum().plot(kind='pie', autopct='%1.1f%%', ax=ax1, cmap='Pastel1')
+            ax1.set_ylabel(''); st.pyplot(fig1)
+        with col2:
+            st.subheader("Kişisel Harcama Toplamı")
+            fig2, ax2 = plt.subplots()
+            df.groupby('KİŞİ')['TUTAR'].sum().plot(kind='bar', ax=ax2, color=['skyblue', 'salmon'])
+            st.pyplot(fig2)
+    else: st.warning("Grafik için veri girilmeli.")
+
+elif sayfa == "📊 Tüm Harcama Listesi":
+    st.metric("Toplam Harcama", f"{df['TUTAR'].sum():,.2f} TL")
+    st.dataframe(df, use_container_width=True)
+
+elif sayfa == "👰 Düğün & Çeyiz": kategori_goster("DÜĞÜN & ÇEYİZ", "👰")
+elif sayfa == "🛒 Market": kategori_goster("MARKET", "🛒")
+elif sayfa == "⛽ Akaryakıt": kategori_goster("AKARYAKIT & ULAŞIM", "⛽")
+elif sayfa == "🍔 Yemek & Kafe": kategori_goster("YEMEK & KAFE", "🍔")
+elif sayfa == "📱 Teknoloji": kategori_goster("TEKNOLOJİ", "📱")
+elif sayfa == "🎓 Eğitim": kategori_goster("EĞİTİM", "🎓")
+elif sayfa == "💧 Su & Fatura": kategori_goster("SU & FATURA", "💧")
