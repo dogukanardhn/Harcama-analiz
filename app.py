@@ -15,6 +15,8 @@ hide_st_style = """
             [data-testid="stStatusWidget"] {visibility: hidden;}
             #manage-app-button {display: none !important;}
             button[title="View source on GitHub"] {display: none;}
+            /* Sol menü genişliğini biraz artıralım */
+            [data-testid="stSidebar"] { min-width: 300px; max-width: 300px; }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
@@ -26,111 +28,124 @@ if 'istekler' not in st.session_state:
     st.session_state.istekler = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
     st.session_state.istek_id_sayaci = 0
 
-kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "DÜĞÜN & ÇEYİZ", "TEKNOLOJİ", "EĞLENCE", "SAĞLIK", "DİĞER"]
+# Kategori Listesi (Genişletildi)
+kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "DÜĞÜN & ÇEYİZ", "TEKNOLOJİ", "EĞİTİM", "SU & FATURA", "SAĞLIK", "DİĞER"]
 
-# --- AÇILIR PENCERE (POPUP) FONKSİYONU ---
+# --- AÇILIR PENCERE (POPUP) ---
 @st.dialog("Görevi Karşıla ve Harcamayı Gir")
 def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
-    st.info(f"**Yerine Getirilen Görev:** {istek_metni}")
-    secilen_kat = st.selectbox("Bu harcama hangi kategoriye giriyor?", kategoriler)
-    girilen_tutar = st.number_input("Ne kadar harcadın? (TL)", min_value=0.0, format="%.2f")
-    
-    if st.button("Kaydet ve Görevi Kapat"):
+    st.info(f"**Görev:** {istek_metni}")
+    secilen_kat = st.selectbox("Kategori", kategoriler)
+    girilen_tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
+    if st.button("Kaydet"):
         st.session_state.istekler.loc[st.session_state.istekler['ID'] == istek_id, 'DURUM'] = 'Tamamlandı ✅'
         bugun = datetime.datetime.now().strftime("%d.%m.%Y")
-        yeni_h = pd.DataFrame([{
-            'TARİH': bugun, 'KİŞİ': aktif_kullanici, 'KATEGORİ': secilen_kat, 
-            'AÇIKLAMA': f"Görev: {istek_metni}", 'TUTAR': float(girilen_tutar)
-        }])
+        yeni_h = pd.DataFrame([{'TARİH': bugun, 'KİŞİ': aktif_kullanici, 'KATEGORİ': secilen_kat, 'AÇIKLAMA': f"Görev: {istek_metni}", 'TUTAR': float(girilen_tutar)}])
         st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_h], ignore_index=True)
         st.rerun()
 
-# 3. YAN MENÜ (SADECE AİLE PANELİ)
-st.sidebar.title("🏡 Aile Paneli")
-kullanici = st.sidebar.radio("👤 Kim Kullanıyor?", ["Doğukan", "Eşim"])
+# 3. SOL SÜTUN (SIDEBAR) - HER ŞEY BURADA
+with st.sidebar:
+    st.title("🏡 Aile Paneli")
+    kullanici = st.radio("👤 Kim Kullanıyor?", ["Doğukan", "Eşim"])
+    st.divider()
 
-# 4. ANA EKRAN BAŞLANGICI VE BİLDİRİMLER
-st.title("💳 Harcama Takibi")
+    # FORM 1: Yeni Harcama (Gömülü/Açılır)
+    with st.expander("➕ Yeni Harcama Ekle"):
+        with st.form("h_form", clear_on_submit=True):
+            kat = st.selectbox("Kategori", kategoriler)
+            tarih = st.date_input("Tarih")
+            aciklama = st.text_input("Açıklama")
+            tutar = st.number_input("Tutar", min_value=0.0)
+            if st.form_submit_button("Kaydet"):
+                if aciklama:
+                    y_v = pd.DataFrame([{'TARİH': tarih.strftime("%d.%m.%Y"), 'KİŞİ': kullanici, 'KATEGORİ': kat, 'AÇIKLAMA': aciklama.upper(), 'TUTAR': float(tutar)}])
+                    st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, y_v], ignore_index=True)
+                    st.rerun()
 
+    # FORM 2: İstek Gönder (Gömülü/Açılır)
+    with st.expander("📌 Görev/İstek Gönder"):
+        with st.form("i_form", clear_on_submit=True):
+            hedef = "Eşim" if kullanici == "Doğukan" else "Doğukan"
+            metin = st.text_input(f"{hedef} için istek:")
+            if st.form_submit_button("Gönder"):
+                if metin:
+                    st.session_state.istek_id_sayaci += 1
+                    y_i = pd.DataFrame([{'ID': st.session_state.istek_id_sayaci, 'KİMDEN': kullanici, 'KİME': hedef, 'İSTEK': metin, 'DURUM': 'Bekliyor ⏳'}])
+                    st.session_state.istekler = pd.concat([st.session_state.istekler, y_i], ignore_index=True)
+                    st.rerun()
+
+    st.divider()
+    
+    # NAVİGASYON MENÜSÜ (Eski Sekmeler Artık Burada)
+    st.subheader("📁 Menü")
+    sayfa = st.radio("Gitmek istediğiniz alan:", [
+        "💬 Görevler Paneli",
+        "📈 Genel Grafikler",
+        "📊 Tüm Harcama Listesi",
+        "👰 Düğün & Çeyiz",
+        "🛒 Market",
+        "⛽ Akaryakıt",
+        "🍔 Yemek & Kafe",
+        "📱 Teknoloji",
+        "🎓 Eğitim",
+        "💧 Su & Fatura"
+    ])
+
+# 4. ANA EKRAN (Sağ Taraf)
+st.title(f"💳 {sayfa}")
+
+# Bildirimler (Her zaman üstte görünsün)
 bekleyen = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
 if not bekleyen.empty:
     st.warning(f"🔔 Sana {len(bekleyen)} yeni görev var!")
     for idx, row in bekleyen.iterrows():
-        c1, c2 = st.columns([4, 1])
+        c1, c2 = st.columns([5, 1])
         c1.info(f"**{row['KİMDEN']}**: {row['İSTEK']}")
         if c2.button("✅ Karşıla", key=f"b_{row['ID']}"):
             gorev_tamamla_penceresi(row['ID'], row['İSTEK'], kullanici)
 
-# 5. FORMLAR ARTIK ANA EKRANDA (Yan Yana İki Sütun)
-form_col1, form_col2 = st.columns(2, gap="large")
+st.divider()
 
-with form_col1:
-    st.subheader("➕ Yeni Harcama Ekle")
-    with st.form("veri_giris_formu", clear_on_submit=True):
-        kategori = st.selectbox("Kategori Seçimi", kategoriler)
-        tarih = st.date_input("İşlem Tarihi")
-        aciklama = st.text_input("Açıklama", placeholder="Örn: Mutfak robotu, benzin...")
-        tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
-        if st.form_submit_button("Harcamayı Kaydet"):
-            if aciklama:
-                yeni_v = pd.DataFrame([{'TARİH': tarih.strftime("%d.%m.%Y"), 'KİŞİ': kullanici, 'KATEGORİ': kategori, 'AÇIKLAMA': aciklama.upper(), 'TUTAR': float(tutar)}])
-                st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_v], ignore_index=True)
-                st.success("Harcama başarıyla eklendi!")
-
-with form_col2:
-    st.subheader("📌 Yeni İstek Gönder")
-    with st.form("istek_formu", clear_on_submit=True):
-        hedef = "Eşim" if kullanici == "Doğukan" else "Doğukan"
-        st.markdown(f"**Alıcı:** {hedef}")
-        metin = st.text_input("Ne lazım?", placeholder="Ekmek al, depoyu doldur...")
-        if st.form_submit_button("İsteği Gönder"):
-            if metin:
-                st.session_state.istek_id_sayaci += 1
-                yeni_i = pd.DataFrame([{'ID': st.session_state.istek_id_sayaci, 'KİMDEN': kullanici, 'KİME': hedef, 'İSTEK': metin, 'DURUM': 'Bekliyor ⏳'}])
-                st.session_state.istekler = pd.concat([st.session_state.istekler, yeni_i], ignore_index=True)
-                st.success("İstek başarıyla iletildi!")
-
-st.markdown("---")
-
-# 6. SEKMELER SATIRI (Formların Hemen Altında)
-sekmeler = st.tabs(["💬 Görevler", "📈 Grafikler", "📊 Tüm Liste", "👰 Çeyiz", "🛒 Market", "⛽ Yakıt", "🍔 Yemek"])
-s_grv, s_grf, s_lst, s_dug, s_mrk, s_ykt, s_ymk = sekmeler
-
+# SAYFA İÇERİKLERİ
 df = st.session_state.harcamalar
 
-with s_grv:
+if sayfa == "💬 Görevler Paneli":
     if not st.session_state.istekler.empty:
         st.dataframe(st.session_state.istekler.drop(columns=['ID']), use_container_width=True)
-    else: st.info("Görev yok.")
+    else: st.info("Henüz bir görev kaydı yok.")
 
-with s_grf:
+elif sayfa == "📈 Genel Grafikler":
     if not df.empty:
         col1, col2 = st.columns(2)
         with col1:
-            st.write("Sektörel Dağılım")
+            st.subheader("Sektörel Dağılım")
             fig1, ax1 = plt.subplots()
             df.groupby('KATEGORİ')['TUTAR'].sum().plot(kind='pie', autopct='%1.1f%%', ax=ax1, cmap='Pastel1')
             ax1.set_ylabel(''); st.pyplot(fig1)
         with col2:
-            st.write("Kişisel Harcama")
+            st.subheader("Kişisel Harcama Toplamı")
             fig2, ax2 = plt.subplots()
             df.groupby('KİŞİ')['TUTAR'].sum().plot(kind='bar', ax=ax2, color=['skyblue', 'salmon'])
             st.pyplot(fig2)
-    else: st.warning("Veri yok.")
+    else: st.warning("Grafik için veri girilmeli.")
 
-with s_lst:
+elif sayfa == "📊 Tüm Harcama Listesi":
     st.metric("Toplam Harcama", f"{df['TUTAR'].sum():,.2f} TL")
     st.dataframe(df, use_container_width=True)
 
-def sekme_yap(df_input, kat, sekme, emoji):
-    with sekme:
-        d = df_input[df_input['KATEGORİ'] == kat]
-        if not d.empty:
-            st.metric(f"{emoji} Toplam", f"{d['TUTAR'].sum():,.2f} TL")
-            st.dataframe(d, use_container_width=True)
-        else: st.info(f"{kat} harcaması yok.")
+# Kategori Sayfaları İçin Fonksiyon
+def kategori_goster(kat_anahtar, emoji):
+    d_kat = df[df['KATEGORİ'] == kat_anahtar]
+    if not d_kat.empty:
+        st.metric(f"{emoji} {kat_anahtar} Toplam", f"{d_kat['TUTAR'].sum():,.2f} TL")
+        st.dataframe(d_kat, use_container_width=True)
+    else: st.info(f"{kat_anahtar} kategorisinde henüz harcama yok.")
 
-sekme_yap(df, "DÜĞÜN & ÇEYİZ", s_dug, "👰")
-sekme_yap(df, "MARKET", s_mrk, "🛒")
-sekme_yap(df, "AKARYAKIT & ULAŞIM", s_ykt, "⛽")
-sekme_yap(df, "YEMEK & KAFE", s_ymk, "🍔")
+elif sayfa == "👰 Düğün & Çeyiz": kategori_goster("DÜĞÜN & ÇEYİZ", "👰")
+elif sayfa == "🛒 Market": kategori_goster("MARKET", "🛒")
+elif sayfa == "⛽ Akaryakıt": kategori_goster("AKARYAKIT & ULAŞIM", "⛽")
+elif sayfa == "🍔 Yemek & Kafe": kategori_goster("YEMEK & KAFE", "🍔")
+elif sayfa == "📱 Teknoloji": kategori_goster("TEKNOLOJİ", "📱")
+elif sayfa == "🎓 Eğitim": kategori_goster("EĞİTİM", "🎓")
+elif sayfa == "💧 Su & Fatura": kategori_goster("SU & FATURA", "💧")
