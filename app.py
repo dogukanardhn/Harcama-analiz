@@ -4,18 +4,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
-# Sayfa Yapılandırması
-st.set_page_config(page_title="Harcama Analizi", page_icon="💳")
+st.set_page_config(page_title="Harcama Analizi", page_icon="💳", layout="wide")
 
-st.title("📊 Harcama Analiz Uygulamam")
-st.markdown("Ekstre PDF'ini yükle, gerisini uygulamaya bırak!")
+st.title("📊 Detaylı Harcama Analiz Uygulamam")
+st.markdown("Ekstre PDF'ini yükle, kategori ve mekan bazlı tüm detayları gör!")
 
-# Dosya Yükleme Butonu
 uploaded_file = st.file_uploader("Vakıfbank PDF'ini Seç", type=["pdf"])
 
 if uploaded_file is not None:
     veriler = []
-    # Regex Şablonu: Tarih + Açıklama + Tutar
     sablon = re.compile(r'(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+((?:\+)?[\d,]+\.\d{2})')
 
     with pdfplumber.open(uploaded_file) as pdf:
@@ -35,14 +32,15 @@ if uploaded_file is not None:
     if veriler:
         df = pd.DataFrame(veriler, columns=['TARİH', 'AÇIKLAMA', 'TUTAR'])
         
-        # Kategorizasyon Sözlüğü
+        # Gelişmiş Kategorizasyon Sözlüğü
         kategoriler = {
-            'MARKET': ['BIM', 'A101', 'FILE', 'KIPA', 'MIGROS', 'CIGDEMCI'],
-            'YEMEK': ['FAST FOOD', 'KANTİN', 'TRENDYOL YEMEK', 'RESTAURANT', 'CAFE', 'KASAP', 'FIRIN', 'IZGARA'],
-            'ULAŞIM': ['TOTAL', 'PEGASUS', 'AJET', 'OTOPARK', 'ESHOT'],
-            'TEKNOLOJİ': ['HEPSIBURADA', 'HEPSIPAY', 'IDEFIX', 'TRENDYOL'],
-            'EĞLENCE': ['HIPODROM'],
-            'DİĞER': []
+            'MARKET': ['BIM', 'A101', 'FILE', 'KIPA', 'MIGROS', 'CIGDEMCI', 'METRO', 'CARREFOUR', 'SOK', 'ŞOK', 'MARKET', 'GROSMARKET'],
+            'YEMEK & KAFE': ['FAST FOOD', 'KANTİN', 'TRENDYOL YEMEK', 'YEMEKSEPETI', 'GETIRYEMEK', 'RESTAURANT', 'CAFE', 'KASAP', 'FIRIN', 'IZGARA', 'LOKANTA', 'PASTANE', 'KADAYIF', 'BÜFE', 'PİDE', 'TATLICI'],
+            'AKARYAKIT & ULAŞIM': ['TOTAL', 'PEGASUS', 'AJET', 'OTOPARK', 'ESHOT', 'PETROL', 'OPET', 'SHELL', 'BP', 'AYTEMİZ', 'TCDD', 'THY'],
+            'TEKNOLOJİ & E-TİCARET': ['HEPSIBURADA', 'HEPSIPAY', 'IDEFIX', 'TRENDYOL', 'AMAZON', 'N11', 'VATAN', 'MEDIAMARKT'],
+            'SAĞLIK': ['ECZANE', 'HASTANE', 'SAĞLIK', 'OPTİK'],
+            'KURUM / DİĞER ÖDEMELER': ['VAKFI', 'DERNEĞİ', 'KUVVETL', 'KUVVETLERİ', 'TSK', 'VERGİ', 'ÖD/'],
+            'EĞLENCE': ['HIPODROM', 'SİNEMA', 'BİLETİX']
         }
 
         def kategori_bul(desc):
@@ -54,17 +52,46 @@ if uploaded_file is not None:
 
         df['KATEGORİ'] = df['AÇIKLAMA'].apply(kategori_bul)
 
-        # Görselleştirme
-        st.metric("Toplam Harcama", f"{df['TUTAR'].sum():,.2f} TL")
+        # --- GÖRSELLEŞTİRME VE ARAYÜZ ---
+        st.metric("Bu Ayki Toplam Harcama", f"{df['TUTAR'].sum():,.2f} TL")
         
-        kat_ozet = df.groupby('KATEGORİ')['TUTAR'].sum()
-        fig, ax = plt.subplots()
-        ax.pie(kat_ozet, labels=kat_ozet.index, autopct='%1.1f%%', startangle=140)
-        st.pyplot(fig)
+        # Ekranı 2 Kolona Böl
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Kategori Dağılımı")
+            kat_ozet = df.groupby('KATEGORİ')['TUTAR'].sum()
+            fig1, ax1 = plt.subplots()
+            ax1.pie(kat_ozet, labels=kat_ozet.index, autopct='%1.1f%%', startangle=140, cmap='Set2')
+            st.pyplot(fig1)
 
+        with col2:
+            st.subheader("Market Harcamaları Detayı")
+            # Sadece Market kategorisini filtrele
+            market_df = df[df['KATEGORİ'] == 'MARKET']
+            if not market_df.empty:
+                # Aynı isimli yerleri birleştir
+                market_ozet = market_df.groupby('AÇIKLAMA')['TUTAR'].sum().sort_values(ascending=True)
+                fig2, ax2 = plt.subplots()
+                market_ozet.plot(kind='barh', ax=ax2, color='skyblue')
+                ax2.set_xlabel("Tutar (TL)")
+                ax2.set_ylabel("")
+                st.pyplot(fig2)
+            else:
+                st.info("Bu ay market harcaması bulunamadı.")
+                
+        st.subheader("En Çok Para Harcanan İlk 10 Yer")
+        top10 = df.groupby('AÇIKLAMA')['TUTAR'].sum().sort_values(ascending=False).head(10)
+        fig3, ax3 = plt.subplots(figsize=(10, 4))
+        top10.plot(kind='bar', ax=ax3, color='coral')
+        plt.xticks(rotation=45, ha='right')
+        ax3.set_xlabel("")
+        ax3.set_ylabel("Tutar (TL)")
+        st.pyplot(fig3)
+
+        st.subheader("Tüm İşlem Dökümü")
         st.dataframe(df, use_container_width=True)
         
-        # Excel İndirme Butonu
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("Excel (CSV) Olarak İndir", csv, "harcamalarim.csv", "text/csv")
     else:
