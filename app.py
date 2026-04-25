@@ -8,16 +8,14 @@ st.set_page_config(
     page_title="Aile Finans Asistanı", 
     page_icon="💎", 
     layout="wide", 
-    initial_sidebar_state="expanded" # Menünün açık gelmesi için zorla
+    initial_sidebar_state="expanded"
 )
 
-# GÜNCELLENEN TEMİZLİK KODU: Header'ı tamamen gizlemiyoruz, sadece butonları temizliyoruz.
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             .stDeployButton {display:none;}
-            /* Manage App ve diğer kalabalıkları gizle ama menü tuşunu bırak */
             [data-testid="stStatusWidget"] {visibility: hidden;}
             </style>
             """
@@ -62,7 +60,8 @@ def kategori_goster(kat_anahtar, emoji, df_input):
 # 3. SOL SÜTUN (KONTROL MERKEZİ)
 with st.sidebar:
     st.title("⚙️ Kontrol Paneli")
-    kullanici = st.radio("👤 Kim Kullanıyor?", ["Doğukan", "Eşim"])
+    # Kullanıcılar "Doğukan" ve "Aybüke" olarak güncellendi!
+    kullanici = st.radio("👤 Kim Kullanıyor?", ["Doğukan", "Aybüke"])
     
     st.divider()
     aylik_limit = st.number_input("🎯 Bütçe Hedefi (TL)", min_value=1000, value=30000, step=1000)
@@ -86,7 +85,8 @@ with st.sidebar:
 
     with st.expander("📌 Yeni Görev İste"):
         with st.form("i_form", clear_on_submit=True):
-            hedef = "Eşim" if kullanici == "Doğukan" else "Doğukan"
+            # Hedef kişi dinamik olarak Aybüke veya Doğukan seçiliyor
+            hedef = "Aybüke" if kullanici == "Doğukan" else "Doğukan"
             metin = st.text_input(f"{hedef} için istek:")
             if st.form_submit_button("Gönder"):
                 if metin:
@@ -104,20 +104,32 @@ with st.sidebar:
     st.subheader("📁 Menü")
     sayfa = st.radio("Alan Seçin:", ["📈 Özet Paneli", "💬 Görevler", "📊 Tüm Liste", "👰 Düğün & Çeyiz", "🛒 Market", "⛽ Akaryakıt", "🍔 Yemek & Kafe", "📱 Teknoloji", "🎓 Eğitim", "💧 Su & Fatura"])
 
-# 4. ANA EKRAN
+# 4. ANA EKRAN VE AKILLI DÖNEM FİLTRESİ
+# 04-2026'dan yıl sonuna kadar olan ayları sisteme tanıtalım
+taban_aylar = [f"{str(m).zfill(2)}-2026" for m in range(4, 13)] 
 mevcut_aylar = st.session_state.harcamalar['AY_YIL'].unique().tolist()
+
+for ay in taban_aylar:
+    if ay not in mevcut_aylar:
+        mevcut_aylar.append(ay)
+
 su_an = datetime.datetime.now().strftime("%m-%Y")
-if su_an not in mevcut_aylar: mevcut_aylar.append(su_an)
+if su_an not in mevcut_aylar: 
+    mevcut_aylar.append(su_an)
+
+# Ayları kronolojik olarak doğru sıralaması için gizli bir tarih çeviricisi
+mevcut_aylar_sirali = sorted(mevcut_aylar, key=lambda d: datetime.datetime.strptime(d, "%m-%Y"), reverse=True)
 
 col_baslik, col_filtre = st.columns([3, 1])
 with col_baslik:
     st.title(f"💳 {sayfa}")
 with col_filtre:
-    secilen_donem = st.selectbox("📅 Dönem Filtresi", sorted(mevcut_aylar, reverse=True))
+    secilen_donem = st.selectbox("📅 Dönem Filtresi", mevcut_aylar_sirali)
 
 df = st.session_state.harcamalar
 df_aylik = df[df['AY_YIL'] == secilen_donem]
 
+# BİLDİRİMLER (Aybüke ve Doğukan isimlerine duyarlı)
 bekleyen = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
 if not bekleyen.empty:
     st.error(f"🔔 Dikkat! Bekleyen {len(bekleyen)} görevin var!")
@@ -129,9 +141,10 @@ if not bekleyen.empty:
 
 st.divider()
 
+# SAYFALAR
 if sayfa == "📈 Özet Paneli":
     toplam_harcama = df_aylik['TUTAR'].sum()
-    yuzde = min(toplam_harcama / aylik_limit, 1.0)
+    yuzde = min(toplam_harcama / aylik_limit, 1.0) if aylik_limit > 0 else 0.0
     st.subheader(f"Hedef Bütçe Durumu ({secilen_donem})")
     st.progress(yuzde)
     
