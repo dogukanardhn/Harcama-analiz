@@ -1,16 +1,41 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import datetime
 
 st.set_page_config(page_title="Aile Bütçesi", page_icon="🏡", layout="wide")
 
-# 1. HAFIZA OLUŞTURMA (ID Sistemi eklendi)
+# 1. HAFIZA OLUŞTURMA
 if 'harcamalar' not in st.session_state:
     st.session_state.harcamalar = pd.DataFrame(columns=['TARİH', 'KİŞİ', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
 if 'istekler' not in st.session_state:
-    # Hangi isteğin kime ait olduğunu takip etmek için gizli bir 'ID' sütunu
     st.session_state.istekler = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
     st.session_state.istek_id_sayaci = 0
+
+kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "TEKNOLOJİ", "EĞLENCE", "SAĞLIK", "DİĞER"]
+
+# --- AÇILIR PENCERE (POPUP) FONKSİYONU ---
+@st.dialog("Görevi Karşıla ve Harcamayı Gir")
+def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
+    st.info(f"**Yerine Getirilen Görev:** {istek_metni}")
+    secilen_kat = st.selectbox("Bu harcama hangi kategoriye giriyor?", kategoriler)
+    girilen_tutar = st.number_input("Ne kadar harcadın? (TL)", min_value=0.0, format="%.2f")
+    
+    if st.button("Kaydet ve Görevi Kapat"):
+        # 1. Görevi tamamlandı yap
+        st.session_state.istekler.loc[st.session_state.istekler['ID'] == istek_id, 'DURUM'] = 'Tamamlandı ✅'
+        
+        # 2. Harcamayı listeye ekle
+        bugun = datetime.datetime.now().strftime("%d.%m.%Y")
+        yeni_h = pd.DataFrame([{
+            'TARİH': bugun,
+            'KİŞİ': aktif_kullanici,
+            'KATEGORİ': secilen_kat,
+            'AÇIKLAMA': f"Görev: {istek_metni}",
+            'TUTAR': float(girilen_tutar)
+        }])
+        st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_h], ignore_index=True)
+        st.rerun()
 
 # 2. SOL MENÜ - KULLANICI VE GİRDİ
 st.sidebar.title("Kullanıcı Paneli")
@@ -20,8 +45,8 @@ st.sidebar.divider()
 st.sidebar.header("➕ Yeni Harcama Ekle")
 with st.sidebar.form("veri_giris_formu", clear_on_submit=True):
     tarih = st.date_input("İşlem Tarihi")
-    kategori = st.selectbox("Kategori", ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "TEKNOLOJİ", "DİĞER"])
-    aciklama = st.text_input("Açıklama", placeholder="Örn: Arabaya yakıt, pazar alışverişi...")
+    kategori = st.selectbox("Kategori", kategoriler)
+    aciklama = st.text_input("Açıklama", placeholder="Örn: Clio'ya benzin, su faturası...")
     tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
     ekle_btn = st.form_submit_button("Harcamayı Kaydet")
 
@@ -40,7 +65,6 @@ st.sidebar.divider()
 
 st.sidebar.header("📌 Yeni İstek/Görev Gönder")
 with st.sidebar.form("istek_formu", clear_on_submit=True):
-    # Kullanıcı kendisi dışındakine istek atsın diye mantık
     hedef_kisi = "Eşim" if kullanici == "Doğukan" else "Doğukan"
     st.markdown(f"**Alıcı:** {hedef_kisi}")
     istek_metni = st.text_input("Ne Lazım?", placeholder="Örn: Akşam gelirken su alır mısın?")
@@ -58,10 +82,10 @@ with st.sidebar.form("istek_formu", clear_on_submit=True):
         st.session_state.istekler = pd.concat([st.session_state.istekler, yeni_istek], ignore_index=True)
         st.sidebar.success("İstek başarıyla iletildi!")
 
-# 3. ANA EKRAN - BİLDİRİMLER VE SEKMELER
+# 3. ANA EKRAN - BİLDİRİMLER
 st.title("🏡 Aile Bütçesi ve Planlama Paneli")
 
-# BİLDİRİM EKRANI: Aktif kullanıcıya ait "Bekleyen" istekleri bul
+# Eğer aktif kullanıcıya atanmış bekleyen bir görev varsa, uyarı ekranı çıkar
 bekleyen_istekler = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
 
 if not bekleyen_istekler.empty:
@@ -71,35 +95,37 @@ if not bekleyen_istekler.empty:
         with col_metin:
             st.info(f"**{row['KİMDEN']}** istiyor: {row['İSTEK']}")
         with col_buton:
-            # Karşıla butonuna basıldığında o ID'ye ait durumu günceller
+            # Butona basıldığında yukarıda yazdığımız popup penceresi açılır
             if st.button("✅ Karşıla", key=f"btn_{row['ID']}"):
-                st.session_state.istekler.loc[st.session_state.istekler['ID'] == row['ID'], 'DURUM'] = 'Tamamlandı ✅'
-                st.rerun() # Sayfayı yenileyip bildirimi kaldırır
+                gorev_tamamla_penceresi(row['ID'], row['İSTEK'], kullanici)
 
 st.markdown("---")
 
-sekme_istek, sekme_grafik, sekme_genel = st.tabs([
-    "💬 İstekler & Görevler Paneli",
-    "📈 Aylık Grafikler",
-    "📊 Tüm Harcama Tablosu"
+# 4. KATEGORİ SEKMELERİ
+sekmeler = st.tabs([
+    "💬 Görevler", 
+    "📈 Grafikler", 
+    "📊 Tüm Liste", 
+    "🛒 Market", 
+    "⛽ Akaryakıt", 
+    "🍔 Yemek", 
+    "📱 Teknoloji", 
+    "🎭 Eğlence"
 ])
+s_gorev, s_grafik, s_tumu, s_market, s_yakit, s_yemek, s_tekno, s_eglence = sekmeler
 
 df = st.session_state.harcamalar
 df_istek = st.session_state.istekler
 
-with sekme_istek:
+with s_gorev:
     st.subheader("Görev Geçmişi")
     if not df_istek.empty:
-        # ID sütununu ekranda kalabalık yapmasın diye gizleyerek gösteriyoruz
         gosterilecek_istekler = df_istek.drop(columns=['ID'])
         st.dataframe(gosterilecek_istekler, use_container_width=True)
-        if st.button("Tüm İstek Geçmişini Temizle"):
-            st.session_state.istekler = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
-            st.rerun()
     else:
-        st.info("Şu an bekleyen veya tamamlanmış bir istek yok.")
+        st.info("Kayıtlı istek yok.")
 
-with sekme_grafik:
+with s_grafik:
     st.subheader("Aylık Harcama Raporu")
     if not df.empty:
         col1, col2 = st.columns(2)
@@ -113,21 +139,4 @@ with sekme_grafik:
         with col2:
             st.markdown("**Kim Ne Kadar Harcadı?**")
             kisi_ozet = df.groupby('KİŞİ')['TUTAR'].sum()
-            fig2, ax2 = plt.subplots(figsize=(6,4))
-            kisi_ozet.plot(kind='bar', ax=ax2, color=['#ff9999','#66b3ff'])
-            ax2.set_ylabel("Toplam Tutar (TL)")
-            plt.xticks(rotation=0)
-            st.pyplot(fig2)
-    else:
-        st.warning("Grafik oluşturmak için soldan birkaç harcama girin.")
-
-with sekme_genel:
-    st.subheader("Tüm Harcama Dökümü")
-    if not df.empty:
-        st.metric("Toplam Aile Harcaması", f"{df['TUTAR'].sum():,.2f} TL")
-        st.dataframe(df, use_container_width=True)
-        if st.button("Tüm Harcamaları Sil"):
-            st.session_state.harcamalar = pd.DataFrame(columns=['TARİH', 'KİŞİ', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
-            st.rerun()
-    else:
-        st.info("Henüz sisteme harcama kaydedilmedi.")
+            fig2, ax2 = plt.subplots(figsize=(
