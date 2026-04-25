@@ -17,13 +17,23 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# 2. GOOGLE SHEETS BAĞLANTISI (Gerçek Veritabanı)
+# 2. GOOGLE SHEETS BAĞLANTISI VE BOŞ TABLO KORUMASI
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Verileri Google Sheets'ten Çek
 def verileri_yukle():
     h_df = conn.read(worksheet="Harcamalar", ttl="1m")
     i_df = conn.read(worksheet="Istekler", ttl="1m")
+    
+    # KORUMA KALKANI: Eğer Excel tamamen boşsa, başlıkları kod kendisi oluştursun (Çökmeyi engeller)
+    if 'AY_YIL' not in h_df.columns:
+        h_df = pd.DataFrame(columns=['TARİH', 'AY_YIL', 'KİŞİ', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
+    if 'ID' not in i_df.columns:
+        i_df = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
+        
+    # Excel'deki fazladan boş satırları temizle
+    h_df = h_df.dropna(how='all')
+    i_df = i_df.dropna(how='all')
+    
     return h_df, i_df
 
 df_harcamalar, df_istekler = verileri_yukle()
@@ -37,11 +47,9 @@ def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
     secilen_kat = st.selectbox("Hangi kategori?", kategoriler)
     girilen_tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
     if st.button("Kaydet ve Veritabanına Yaz"):
-        # 1. İstek Durumunu Güncelle
         df_istekler.loc[df_istekler['ID'] == istek_id, 'DURUM'] = 'Tamamlandı ✅'
         conn.update(worksheet="Istekler", data=df_istekler)
         
-        # 2. Harcamayı Ekle
         bugun = datetime.datetime.now()
         yeni_h = pd.DataFrame([{
             'TARİH': bugun.strftime("%d.%m.%Y"), 
@@ -106,7 +114,8 @@ with st.sidebar:
 
 # 4. ANA EKRAN VE AKILLI DÖNEM SEÇİCİ
 taban_aylar = [f"{str(m).zfill(2)}-2026" for m in range(4, 13)] 
-mevcut_aylar = df_harcamalar['AY_YIL'].unique().tolist() if not df_harcamalar.empty else []
+mevcut_aylar = df_harcamalar['AY_YIL'].dropna().unique().tolist() if not df_harcamalar.empty else []
+
 for ay in taban_aylar:
     if ay not in mevcut_aylar: mevcut_aylar.append(ay)
 
@@ -142,7 +151,7 @@ def kategori_goster(kat_anahtar, emoji, df_input):
     else: st.info(f"Bu ay {kat_anahtar} kategorisinde harcama yok.")
 
 if sayfa == "📈 Özet Paneli":
-    toplam_harcama = df_aylik['TUTAR'].sum()
+    toplam_harcama = df_aylik['TUTAR'].sum() if not df_aylik.empty else 0
     yuzde = min(toplam_harcama / aylik_limit, 1.0) if aylik_limit > 0 else 0.0
     st.subheader(f"Bütçe Durumu ({secilen_donem})")
     st.progress(yuzde)
@@ -150,10 +159,11 @@ if sayfa == "📈 Özet Paneli":
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Aylık Harcama", f"{toplam_harcama:,.2f} TL")
     col_b.metric("Kalan Bütçe", f"{(aylik_limit - toplam_harcama):,.2f} TL")
-    dugun_toplam = df_harcamalar[df_harcamalar['KATEGORİ'] == "DÜĞÜN & ÇEYİZ"]['TUTAR'].sum()
+    
+    dugun_toplam = df_harcamalar[df_harcamalar['KATEGORİ'] == "DÜĞÜN & ÇEYİZ"]['TUTAR'].sum() if not df_harcamalar.empty else 0
     col_c.metric("👰 Toplam Çeyiz Masrafı", f"{dugun_toplam:,.2f} TL")
     
-    if not df_aylik.empty:
+    if not df_aylik.empty and toplam_harcama > 0:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**Sektörel Dağılım**")
@@ -167,7 +177,10 @@ if sayfa == "📈 Özet Paneli":
             plt.xticks(rotation=0); st.pyplot(fig2)
 
 elif sayfa == "💬 Görevler":
-    st.dataframe(df_istekler.drop(columns=['ID']), use_container_width=True)
+    if not df_istekler.empty:
+        st.dataframe(df_istekler.drop(columns=['ID']), use_container_width=True)
+    else:
+        st.info("Henüz bekleyen veya tamamlanan görev yok.")
 
 elif sayfa == "📊 Tüm Liste":
     st.dataframe(df_aylik, use_container_width=True)
