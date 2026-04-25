@@ -40,7 +40,16 @@ def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
     if st.button("Kaydet"):
         st.session_state.istekler.loc[st.session_state.istekler['ID'] == istek_id, 'DURUM'] = 'Tamamlandı ✅'
         bugun = datetime.datetime.now().strftime("%d.%m.%Y")
-        yeni_h = pd.DataFrame([{'TARİH': bugun, 'KİŞİ': aktif_kullanici, 'KATEGORİ': secilen_kat, 'AÇIKLAMA': f"Görev: {istek_metni}", 'TUTAR': float(girilen_tutar)}])
+        
+        # SATIRLAR BÖLÜNDÜ (Tablet kopyalaması için güvenli)
+        yeni_h = pd.DataFrame([{
+            'TARİH': bugun, 
+            'KİŞİ': aktif_kullanici, 
+            'KATEGORİ': secilen_kat, 
+            'AÇIKLAMA': f"Görev: {istek_metni}", 
+            'TUTAR': float(girilen_tutar)
+        }])
+        
         st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_h], ignore_index=True)
         st.rerun()
 
@@ -59,4 +68,26 @@ with st.sidebar:
             tutar = st.number_input("Tutar", min_value=0.0)
             if st.form_submit_button("Kaydet"):
                 if aciklama:
-                    y_v = pd.DataFrame([{'TARİH': tarih.strftime("%d.%m.%Y"), 'KİŞİ': kullanici, 'KATEGORİ': kat, 'AÇIKLAMA': aciklama.upper(), 'T
+                    # SATIRLAR BÖLÜNDÜ (Tablet kopyalaması için güvenli)
+                    y_v = pd.DataFrame([{
+                        'TARİH': tarih.strftime("%d.%m.%Y"), 
+                        'KİŞİ': kullanici, 
+                        'KATEGORİ': kat, 
+                        'AÇIKLAMA': aciklama.upper(), 
+                        'TUTAR': float(tutar)
+                    }])
+                    st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, y_v], ignore_index=True)
+                    st.rerun()
+
+    # FORM 2: İstek Gönder (Gömülü/Açılır)
+    with st.expander("📌 Görev/İstek Gönder"):
+        with st.form("i_form", clear_on_submit=True):
+            hedef = "Eşim" if kullanici == "Doğukan" else "Doğukan"
+            metin = st.text_input(f"{hedef} için istek:")
+            if st.form_submit_button("Gönder"):
+                if metin:
+                    st.session_state.istek_id_sayaci += 1
+                    # SATIRLAR BÖLÜNDÜ (Tablet kopyalaması için güvenli)
+                    y_i = pd.DataFrame([{
+                        'ID': st.session_state.istek_id_sayaci, 
+                        'Kİ
