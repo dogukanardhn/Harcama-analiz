@@ -12,7 +12,8 @@ if 'istekler' not in st.session_state:
     st.session_state.istekler = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
     st.session_state.istek_id_sayaci = 0
 
-kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "TEKNOLOJİ", "EĞLENCE", "SAĞLIK", "DİĞER"]
+# İstediğin gibi Düğün ve Çeyiz birleştirildi
+kategoriler = ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "DÜĞÜN & ÇEYİZ", "TEKNOLOJİ", "EĞLENCE", "SAĞLIK", "DİĞER"]
 
 # --- AÇILIR PENCERE (POPUP) FONKSİYONU ---
 @st.dialog("Görevi Karşıla ve Harcamayı Gir")
@@ -22,10 +23,8 @@ def gorev_tamamla_penceresi(istek_id, istek_metni, aktif_kullanici):
     girilen_tutar = st.number_input("Ne kadar harcadın? (TL)", min_value=0.0, format="%.2f")
     
     if st.button("Kaydet ve Görevi Kapat"):
-        # 1. Görevi tamamlandı yap
         st.session_state.istekler.loc[st.session_state.istekler['ID'] == istek_id, 'DURUM'] = 'Tamamlandı ✅'
         
-        # 2. Harcamayı listeye ekle
         bugun = datetime.datetime.now().strftime("%d.%m.%Y")
         yeni_h = pd.DataFrame([{
             'TARİH': bugun,
@@ -46,7 +45,7 @@ st.sidebar.header("➕ Yeni Harcama Ekle")
 with st.sidebar.form("veri_giris_formu", clear_on_submit=True):
     tarih = st.date_input("İşlem Tarihi")
     kategori = st.selectbox("Kategori", kategoriler)
-    aciklama = st.text_input("Açıklama", placeholder="Örn: Clio'ya benzin, su faturası...")
+    aciklama = st.text_input("Açıklama", placeholder="Örn: Clio için benzin, mutfak robotu...")
     tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
     ekle_btn = st.form_submit_button("Harcamayı Kaydet")
 
@@ -67,7 +66,7 @@ st.sidebar.header("📌 Yeni İstek/Görev Gönder")
 with st.sidebar.form("istek_formu", clear_on_submit=True):
     hedef_kisi = "Eşim" if kullanici == "Doğukan" else "Doğukan"
     st.markdown(f"**Alıcı:** {hedef_kisi}")
-    istek_metni = st.text_input("Ne Lazım?", placeholder="Örn: Akşam gelirken su alır mısın?")
+    istek_metni = st.text_input("Ne Lazım?", placeholder="Örn: Beyaz eşya taksitini öder misin?")
     istek_btn = st.form_submit_button("İsteği Gönder")
 
     if istek_btn and istek_metni:
@@ -82,37 +81,36 @@ with st.sidebar.form("istek_formu", clear_on_submit=True):
         st.session_state.istekler = pd.concat([st.session_state.istekler, yeni_istek], ignore_index=True)
         st.sidebar.success("İstek başarıyla iletildi!")
 
-# 3. ANA EKRAN - BİLDİRİMLER
+# 3. ANA EKRAN
 st.title("🏡 Aile Bütçesi ve Planlama Paneli")
 
-# Eğer aktif kullanıcıya atanmış bekleyen bir görev varsa, uyarı ekranı çıkar
 bekleyen_istekler = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
 
 if not bekleyen_istekler.empty:
-    st.warning(f"🔔 Sana atanmış {len(bekleyen_istekler)} adet yeni görev/istek var!")
+    st.warning(f"🔔 Sana atanmış {len(bekleyen_istekler)} adet yeni görev var!")
     for index, row in bekleyen_istekler.iterrows():
         col_metin, col_buton = st.columns([4, 1])
         with col_metin:
             st.info(f"**{row['KİMDEN']}** istiyor: {row['İSTEK']}")
         with col_buton:
-            # Butona basıldığında yukarıda yazdığımız popup penceresi açılır
             if st.button("✅ Karşıla", key=f"btn_{row['ID']}"):
                 gorev_tamamla_penceresi(row['ID'], row['İSTEK'], kullanici)
 
 st.markdown("---")
 
 # 4. KATEGORİ SEKMELERİ
+# Yeni birleşik sekme eklendi: "🤵👰 Düğün & Çeyiz"
 sekmeler = st.tabs([
     "💬 Görevler", 
     "📈 Grafikler", 
     "📊 Tüm Liste", 
+    "🤵👰 Düğün & Çeyiz",
     "🛒 Market", 
     "⛽ Akaryakıt", 
     "🍔 Yemek", 
-    "📱 Teknoloji", 
-    "🎭 Eğlence"
+    "📱 Teknoloji"
 ])
-s_gorev, s_grafik, s_tumu, s_market, s_yakit, s_yemek, s_tekno, s_eglence = sekmeler
+s_gorev, s_grafik, s_tumu, s_dugun, s_market, s_yakit, s_yemek, s_tekno = sekmeler
 
 df = st.session_state.harcamalar
 df_istek = st.session_state.istekler
@@ -120,8 +118,7 @@ df_istek = st.session_state.istekler
 with s_gorev:
     st.subheader("Görev Geçmişi")
     if not df_istek.empty:
-        gosterilecek_istekler = df_istek.drop(columns=['ID'])
-        st.dataframe(gosterilecek_istekler, use_container_width=True)
+        st.dataframe(df_istek.drop(columns=['ID']), use_container_width=True)
     else:
         st.info("Kayıtlı istek yok.")
 
@@ -130,18 +127,18 @@ with s_grafik:
     if not df.empty:
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**Kategoriye Göre Yüzdeler**")
+            st.markdown("**Sektörel Dağılım**")
             kat_ozet = df.groupby('KATEGORİ')['TUTAR'].sum()
             fig1, ax1 = plt.subplots(figsize=(6,6))
-            kat_ozet.plot(kind='pie', ax=ax1, autopct='%1.1f%%', startangle=140, cmap='Set3')
+            kat_ozet.plot(kind='pie', ax=ax1, autopct='%1.1f%%', startangle=140, cmap='Pastel1')
             ax1.set_ylabel('')
             st.pyplot(fig1)
         with col2:
-            st.markdown("**Kim Ne Kadar Harcadı?**")
+            st.markdown("**Bireysel Harcama**")
             kisi_ozet = df.groupby('KİŞİ')['TUTAR'].sum()
             fig2, ax2 = plt.subplots(figsize=(6,4))
-            kisi_ozet.plot(kind='bar', ax=ax2, color=['#ff9999','#66b3ff'])
-            ax2.set_ylabel("Toplam Tutar (TL)")
+            kisi_ozet.plot(kind='bar', ax=ax2, color=['#87CEFA','#FFA07A'])
+            ax2.set_ylabel("Tutar (TL)")
             plt.xticks(rotation=0)
             st.pyplot(fig2)
     else:
@@ -150,21 +147,21 @@ with s_grafik:
 with s_tumu:
     st.subheader("Tüm Harcama Dökümü")
     if not df.empty:
-        st.metric("Toplam Aile Harcaması", f"{df['TUTAR'].sum():,.2f} TL")
+        st.metric("Toplam Aile Bütçesi", f"{df['TUTAR'].sum():,.2f} TL")
         st.dataframe(df, use_container_width=True)
-    else:
-        st.info("Kayıt yok.")
 
-# Kategoriler için sekmeleri dolduran yardımcı bir araç
+# Kategori sekme fonksiyonu
 def kategori_sekmesi_doldur(kat_adi, baslik, emoji):
-    st.subheader(f"{emoji} {baslik} Harcamaları")
+    st.subheader(f"{emoji} {baslik} Detayları")
     df_kat = df[df['KATEGORİ'] == kat_adi]
     if not df_kat.empty:
-        st.metric(f"{baslik} Toplamı", f"{df_kat['TUTAR'].sum():,.2f} TL")
+        st.metric(f"{baslik} Toplam", f"{df_kat['TUTAR'].sum():,.2f} TL")
         st.dataframe(df_kat, use_container_width=True)
     else:
-        st.warning(f"Bu ay {baslik.lower()} harcaması yapılmadı.")
+        st.warning(f"{baslik} için henüz harcama girişi yapılmadı.")
 
+with s_dugun:
+    kategori_sekmesi_doldur("DÜĞÜN & ÇEYİZ", "Düğün & Çeyiz", "🤵👰")
 with s_market:
     kategori_sekmesi_doldur("MARKET", "Market", "🛒")
 with s_yakit:
@@ -173,5 +170,3 @@ with s_yemek:
     kategori_sekmesi_doldur("YEMEK & KAFE", "Yemek & Kafe", "🍔")
 with s_tekno:
     kategori_sekmesi_doldur("TEKNOLOJİ", "Teknoloji", "📱")
-with s_eglence:
-    kategori_sekmesi_doldur("EĞLENCE", "Eğlence", "🎭")
