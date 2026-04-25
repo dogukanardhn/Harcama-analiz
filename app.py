@@ -139,4 +139,39 @@ with s_grafik:
         with col2:
             st.markdown("**Kim Ne Kadar Harcadı?**")
             kisi_ozet = df.groupby('KİŞİ')['TUTAR'].sum()
-            fig2, ax2 = plt.subplots(figsize=(
+            fig2, ax2 = plt.subplots(figsize=(6,4))
+            kisi_ozet.plot(kind='bar', ax=ax2, color=['#ff9999','#66b3ff'])
+            ax2.set_ylabel("Toplam Tutar (TL)")
+            plt.xticks(rotation=0)
+            st.pyplot(fig2)
+    else:
+        st.warning("Henüz yeterli veri yok.")
+
+with s_tumu:
+    st.subheader("Tüm Harcama Dökümü")
+    if not df.empty:
+        st.metric("Toplam Aile Harcaması", f"{df['TUTAR'].sum():,.2f} TL")
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("Kayıt yok.")
+
+# Kategoriler için sekmeleri dolduran yardımcı bir araç
+def kategori_sekmesi_doldur(kat_adi, baslik, emoji):
+    st.subheader(f"{emoji} {baslik} Harcamaları")
+    df_kat = df[df['KATEGORİ'] == kat_adi]
+    if not df_kat.empty:
+        st.metric(f"{baslik} Toplamı", f"{df_kat['TUTAR'].sum():,.2f} TL")
+        st.dataframe(df_kat, use_container_width=True)
+    else:
+        st.warning(f"Bu ay {baslik.lower()} harcaması yapılmadı.")
+
+with s_market:
+    kategori_sekmesi_doldur("MARKET", "Market", "🛒")
+with s_yakit:
+    kategori_sekmesi_doldur("AKARYAKIT & ULAŞIM", "Akaryakıt & Ulaşım", "⛽")
+with s_yemek:
+    kategori_sekmesi_doldur("YEMEK & KAFE", "Yemek & Kafe", "🍔")
+with s_tekno:
+    kategori_sekmesi_doldur("TEKNOLOJİ", "Teknoloji", "📱")
+with s_eglence:
+    kategori_sekmesi_doldur("EĞLENCE", "Eğlence", "🎭")
