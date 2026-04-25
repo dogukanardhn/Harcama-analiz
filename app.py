@@ -122,8 +122,16 @@ if not bekleyen.empty:
 
 st.divider()
 
-# --- SAYFA İÇERİKLERİ ---
+# --- YARDIMCI FONKSİYON (Zincirin Dışına, Üste Alındı!) ---
+def kategori_goster(kat_anahtar, emoji):
+    d_kat = df_aylik[df_aylik['KATEGORİ'] == kat_anahtar]
+    if not d_kat.empty:
+        st.metric(f"{emoji} {kat_anahtar} Dönem Toplamı", f"{d_kat['TUTAR'].sum():,.2f} TL")
+        st.dataframe(d_kat, use_container_width=True)
+    else: st.info(f"Bu ay {kat_anahtar} kategorisinde harcama yok.")
 
+
+# --- SAYFA İÇERİKLERİ (Kesintisiz Zincir) ---
 if sayfa == "📈 Özet Paneli":
     toplam_harcama = df_aylik['TUTAR'].sum()
     
@@ -165,14 +173,6 @@ elif sayfa == "💬 Görevler":
 
 elif sayfa == "📊 Tüm Liste":
     st.dataframe(df_aylik, use_container_width=True)
-
-# Kategori İçerik Fonksiyonu
-def kategori_goster(kat_anahtar, emoji):
-    d_kat = df_aylik[df_aylik['KATEGORİ'] == kat_anahtar]
-    if not d_kat.empty:
-        st.metric(f"{emoji} {kat_anahtar} Dönem Toplamı", f"{d_kat['TUTAR'].sum():,.2f} TL")
-        st.dataframe(d_kat, use_container_width=True)
-    else: st.info(f"Bu ay {kat_anahtar} kategorisinde harcama yok.")
 
 elif sayfa == "👰 Düğün & Çeyiz": kategori_goster("DÜĞÜN & ÇEYİZ", "👰")
 elif sayfa == "🛒 Market": kategori_goster("MARKET", "🛒")
