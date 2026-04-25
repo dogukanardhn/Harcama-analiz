@@ -1,20 +1,43 @@
 import streamlit as st
-import pdfplumber
 import pandas as pd
-import matplotlib.pyplot as plt
+import pdfplumber
 import re
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Harcama Analizi", page_icon="💳", layout="wide")
+st.set_page_config(page_title="İnteraktif Bütçe", page_icon="💳", layout="wide")
 
-st.title("📊 Detaylı Harcama Analiz Uygulamam")
-st.markdown("Ekstre PDF'ini yükle, kategori ve mekan bazlı tüm detayları gör!")
+# 1. HAFIZA OLUŞTURMA (Girdiğimiz verilerin kaybolmaması için)
+if 'harcamalar' not in st.session_state:
+    st.session_state.harcamalar = pd.DataFrame(columns=['TARİH', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
 
-uploaded_file = st.file_uploader("Vakıfbank PDF'ini Seç", type=["pdf"])
+# 2. SOL MENÜ - GİRDİ ALANI (İnteraktif Kısım)
+st.sidebar.header("➕ Yeni Harcama Ekle")
+with st.sidebar.form("veri_giris_formu"):
+    tarih = st.date_input("İşlem Tarihi")
+    kategori = st.selectbox("Kategori Seçin", ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "TEKNOLOJİ", "DİĞER"])
+    aciklama = st.text_input("Açıklama / Yer", placeholder="Örn: Clio için benzin, Migros alışverişi...")
+    tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
+    ekle_btn = st.form_submit_button("Listeye Ekle")
+
+    if ekle_btn and aciklama:
+        yeni_veri = pd.DataFrame([{
+            'TARİH': tarih.strftime("%d.%m.%Y"), 
+            'KATEGORİ': kategori, 
+            'AÇIKLAMA': aciklama.upper(), 
+            'TUTAR': float(tutar)
+        }])
+        st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, yeni_veri], ignore_index=True)
+        st.sidebar.success("Harcama başarıyla eklendi!")
+
+# İstersen PDF'i de toptan ekleyebilmen için ufak bir buton
+st.sidebar.divider()
+st.sidebar.subheader("Veya PDF'ten Toptan Yükle")
+uploaded_file = st.sidebar.file_uploader("Vakıfbank Ekstresi", type=["pdf"])
 
 if uploaded_file is not None:
-    veriler = []
+    # Eski PDF okuma motorumuz arka planda sessizce çalışır
     sablon = re.compile(r'(\d{2}\.\d{2}\.\d{4})\s+(.+?)\s+((?:\+)?[\d,]+\.\d{2})')
-
+    gecici_veriler = []
     with pdfplumber.open(uploaded_file) as pdf:
         for page in pdf.pages:
             text = page.extract_text()
@@ -22,79 +45,78 @@ if uploaded_file is not None:
                 for line in text.split('\n'):
                     match = sablon.search(line)
                     if match:
-                        tarih, aciklama, tutar_str = match.groups()
-                        if '+' in tutar_str or 'ÖNCEKİ DÖNEM' in aciklama.upper() or 'SON ÖDE' in aciklama.upper():
-                            continue
-                        tutar = float(tutar_str.replace(',', ''))
-                        if tutar > 0:
-                            veriler.append([tarih, aciklama, tutar])
-
-    if veriler:
-        df = pd.DataFrame(veriler, columns=['TARİH', 'AÇIKLAMA', 'TUTAR'])
+                        t, a, tut_str = match.groups()
+                        if '+' in tut_str or 'ÖNCEKİ' in a.upper() or 'SON ÖDE' in a.upper(): continue
+                        tut = float(tut_str.replace(',', ''))
+                        if tut > 0: gecici_veriler.append([t, "DİĞER", a, tut])
+    
+    if gecici_veriler:
+        pdf_df = pd.DataFrame(gecici_veriler, columns=['TARİH', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
         
-        # Gelişmiş Kategorizasyon Sözlüğü
-        kategoriler = {
-            'MARKET': ['BIM', 'A101', 'FILE', 'KIPA', 'MIGROS', 'CIGDEMCI', 'METRO', 'CARREFOUR', 'SOK', 'ŞOK', 'MARKET', 'GROSMARKET'],
-            'YEMEK & KAFE': ['FAST FOOD', 'KANTİN', 'TRENDYOL YEMEK', 'YEMEKSEPETI', 'GETIRYEMEK', 'RESTAURANT', 'CAFE', 'KASAP', 'FIRIN', 'IZGARA', 'LOKANTA', 'PASTANE', 'KADAYIF', 'BÜFE', 'PİDE', 'TATLICI'],
-            'AKARYAKIT & ULAŞIM': ['TOTAL', 'PEGASUS', 'AJET', 'OTOPARK', 'ESHOT', 'PETROL', 'OPET', 'SHELL', 'BP', 'AYTEMİZ', 'TCDD', 'THY'],
-            'TEKNOLOJİ & E-TİCARET': ['HEPSIBURADA', 'HEPSIPAY', 'IDEFIX', 'TRENDYOL', 'AMAZON', 'N11', 'VATAN', 'MEDIAMARKT'],
-            'SAĞLIK': ['ECZANE', 'HASTANE', 'SAĞLIK', 'OPTİK'],
-            'KURUM / DİĞER ÖDEMELER': ['VAKFI', 'DERNEĞİ', 'KUVVETL', 'KUVVETLERİ', 'TSK', 'VERGİ', 'ÖD/'],
-            'EĞLENCE': ['HIPODROM', 'SİNEMA', 'BİLETİX']
+        kat_sozluk = {
+            'MARKET': ['BIM', 'A101', 'FILE', 'MIGROS', 'METRO', 'SOK', 'MARKET'],
+            'YEMEK & KAFE': ['FAST FOOD', 'KANTİN', 'TRENDYOL YEMEK', 'CAFE', 'FIRIN', 'LOKANTA'],
+            'AKARYAKIT & ULAŞIM': ['TOTAL', 'PEGASUS', 'AJET', 'PETROL', 'OPET', 'SHELL', 'ESHOT'],
         }
-
-        def kategori_bul(desc):
-            desc = str(desc).upper()
-            for kat, keywords in kategoriler.items():
-                for word in keywords:
-                    if word in desc: return kat
+        def k_bul(desc):
+            for k, kelimeler in kat_sozluk.items():
+                if any(kelime in str(desc).upper() for kelime in kelimeler): return k
             return 'DİĞER'
-
-        df['KATEGORİ'] = df['AÇIKLAMA'].apply(kategori_bul)
-
-        # --- GÖRSELLEŞTİRME VE ARAYÜZ ---
-        st.metric("Bu Ayki Toplam Harcama", f"{df['TUTAR'].sum():,.2f} TL")
         
-        # Ekranı 2 Kolona Böl
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Kategori Dağılımı")
-            kat_ozet = df.groupby('KATEGORİ')['TUTAR'].sum()
-            fig1, ax1 = plt.subplots()
-            
-            # HATA BURADAYDI: Matplotlib yerine Pandas çizicisi kullandık
-            kat_ozet.plot(kind='pie', ax=ax1, autopct='%1.1f%%', startangle=140, cmap='Set2')
-            ax1.set_ylabel('') # Y eksenindeki çirkin "TUTAR" yazısını siler
-            st.pyplot(fig1)
+        pdf_df['KATEGORİ'] = pdf_df['AÇIKLAMA'].apply(k_bul)
+        st.session_state.harcamalar = pd.concat([st.session_state.harcamalar, pdf_df], ignore_index=True)
+        st.sidebar.success("PDF verileri sisteme eklendi!")
 
-        with col2:
-            st.subheader("Market Harcamaları Detayı")
-            # Sadece Market kategorisini filtrele
-            market_df = df[df['KATEGORİ'] == 'MARKET']
-            if not market_df.empty:
-                market_ozet = market_df.groupby('AÇIKLAMA')['TUTAR'].sum().sort_values(ascending=True)
-                fig2, ax2 = plt.subplots()
-                market_ozet.plot(kind='barh', ax=ax2, color='skyblue')
-                ax2.set_xlabel("Tutar (TL)")
-                ax2.set_ylabel("")
-                st.pyplot(fig2)
-            else:
-                st.info("Bu ay market harcaması bulunamadı.")
-                
-        st.subheader("En Çok Para Harcanan İlk 10 Yer")
-        top10 = df.groupby('AÇIKLAMA')['TUTAR'].sum().sort_values(ascending=False).head(10)
-        fig3, ax3 = plt.subplots(figsize=(10, 4))
-        top10.plot(kind='bar', ax=ax3, color='coral')
-        plt.xticks(rotation=45, ha='right')
-        ax3.set_xlabel("")
-        ax3.set_ylabel("Tutar (TL)")
-        st.pyplot(fig3)
+# 3. ANA EKRAN - SEKMELER (ÇIKTI ALANI)
+st.title("💳 Kategorik Harcama Paneli")
 
-        st.subheader("Tüm İşlem Dökümü")
+df = st.session_state.harcamalar
+
+# Sekmeleri oluşturuyoruz
+sekme_genel, sekme_market, sekme_yemek, sekme_yakit = st.tabs([
+    "📊 Genel Özet", 
+    "🛒 Market", 
+    "🍔 Yemek & Kafe", 
+    "⛽ Akaryakıt & Ulaşım"
+])
+
+# SEKMELERİN İÇERİĞİ
+with sekme_genel:
+    st.subheader("Tüm Harcamalar")
+    if not df.empty:
+        st.metric("Toplam Harcama", f"{df['TUTAR'].sum():,.2f} TL")
         st.dataframe(df, use_container_width=True)
         
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("Excel (CSV) Olarak İndir", csv, "harcamalarim.csv", "text/csv")
+        if st.button("Tüm Listeyi Temizle"):
+            st.session_state.harcamalar = pd.DataFrame(columns=['TARİH', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
+            st.rerun()
     else:
-        st.warning("Geçerli harcama bulunamadı.")
+        st.info("Sol taraftan harcama ekleyin veya PDF yükleyin.")
+
+with sekme_market:
+    st.subheader("🛒 Sadece Market Harcamaları")
+    df_market = df[df['KATEGORİ'] == 'MARKET']
+    if not df_market.empty:
+        st.metric("Market Toplamı", f"{df_market['TUTAR'].sum():,.2f} TL")
+        st.dataframe(df_market, use_container_width=True)
+    else:
+        st.warning("Bu kategoride henüz girdi yok.")
+
+with sekme_yemek:
+    st.subheader("🍔 Sadece Yemek & Kafe Harcamaları")
+    df_yemek = df[df['KATEGORİ'] == 'YEMEK & KAFE']
+    if not df_yemek.empty:
+        st.metric("Yemek Toplamı", f"{df_yemek['TUTAR'].sum():,.2f} TL")
+        st.dataframe(df_yemek, use_container_width=True)
+    else:
+        st.warning("Bu kategoride henüz girdi yok.")
+
+with sekme_yakit:
+    st.subheader("⛽ Sadece Akaryakıt & Ulaşım Harcamaları")
+    df_yakit = df[df['KATEGORİ'] == 'AKARYAKIT & ULAŞIM']
+    if not df_yakit.empty:
+        st.metric("Akaryakıt Toplamı", f"{df_yakit['TUTAR'].sum():,.2f} TL")
+        st.dataframe(df_yakit, use_container_width=True)
+    else:
+        st.warning("Bu kategoride henüz girdi yok.")
+
