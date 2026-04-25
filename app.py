@@ -4,11 +4,13 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Aile Bütçesi", page_icon="🏡", layout="wide")
 
-# 1. HAFIZA OLUŞTURMA (Geçici Veritabanı)
+# 1. HAFIZA OLUŞTURMA (ID Sistemi eklendi)
 if 'harcamalar' not in st.session_state:
     st.session_state.harcamalar = pd.DataFrame(columns=['TARİH', 'KİŞİ', 'KATEGORİ', 'AÇIKLAMA', 'TUTAR'])
 if 'istekler' not in st.session_state:
-    st.session_state.istekler = pd.DataFrame(columns=['KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
+    # Hangi isteğin kime ait olduğunu takip etmek için gizli bir 'ID' sütunu
+    st.session_state.istekler = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
+    st.session_state.istek_id_sayaci = 0
 
 # 2. SOL MENÜ - KULLANICI VE GİRDİ
 st.sidebar.title("Kullanıcı Paneli")
@@ -19,7 +21,7 @@ st.sidebar.header("➕ Yeni Harcama Ekle")
 with st.sidebar.form("veri_giris_formu", clear_on_submit=True):
     tarih = st.date_input("İşlem Tarihi")
     kategori = st.selectbox("Kategori", ["MARKET", "YEMEK & KAFE", "AKARYAKIT & ULAŞIM", "TEKNOLOJİ", "DİĞER"])
-    aciklama = st.text_input("Açıklama", placeholder="Örn: Clio'ya benzin, Migros alışverişi...")
+    aciklama = st.text_input("Açıklama", placeholder="Örn: Arabaya yakıt, pazar alışverişi...")
     tutar = st.number_input("Tutar (TL)", min_value=0.0, format="%.2f")
     ekle_btn = st.form_submit_button("Harcamayı Kaydet")
 
@@ -38,42 +40,64 @@ st.sidebar.divider()
 
 st.sidebar.header("📌 Yeni İstek/Görev Gönder")
 with st.sidebar.form("istek_formu", clear_on_submit=True):
-    kime = st.selectbox("Kime İstek Atıyorsun?", ["Eşim", "Doğukan"])
+    # Kullanıcı kendisi dışındakine istek atsın diye mantık
+    hedef_kisi = "Eşim" if kullanici == "Doğukan" else "Doğukan"
+    st.markdown(f"**Alıcı:** {hedef_kisi}")
     istek_metni = st.text_input("Ne Lazım?", placeholder="Örn: Akşam gelirken su alır mısın?")
     istek_btn = st.form_submit_button("İsteği Gönder")
 
     if istek_btn and istek_metni:
+        st.session_state.istek_id_sayaci += 1
         yeni_istek = pd.DataFrame([{
+            'ID': st.session_state.istek_id_sayaci,
             'KİMDEN': kullanici,
-            'KİME': kime,
+            'KİME': hedef_kisi,
             'İSTEK': istek_metni,
             'DURUM': 'Bekliyor ⏳'
         }])
         st.session_state.istekler = pd.concat([st.session_state.istekler, yeni_istek], ignore_index=True)
-        st.sidebar.success("İstek paneline düştü!")
+        st.sidebar.success("İstek başarıyla iletildi!")
 
-# 3. ANA EKRAN - SEKMELER
+# 3. ANA EKRAN - BİLDİRİMLER VE SEKMELER
 st.title("🏡 Aile Bütçesi ve Planlama Paneli")
 
-sekme_istek, sekme_grafik, sekme_genel, sekme_market = st.tabs([
-    "💬 İstekler & Görevler",
-    "📈 Grafikler ve Analiz",
-    "📊 Tüm Harcamalar",
-    "🛒 Market"
+# BİLDİRİM EKRANI: Aktif kullanıcıya ait "Bekleyen" istekleri bul
+bekleyen_istekler = st.session_state.istekler[(st.session_state.istekler['KİME'] == kullanici) & (st.session_state.istekler['DURUM'] == 'Bekliyor ⏳')]
+
+if not bekleyen_istekler.empty:
+    st.warning(f"🔔 Sana atanmış {len(bekleyen_istekler)} adet yeni görev/istek var!")
+    for index, row in bekleyen_istekler.iterrows():
+        col_metin, col_buton = st.columns([4, 1])
+        with col_metin:
+            st.info(f"**{row['KİMDEN']}** istiyor: {row['İSTEK']}")
+        with col_buton:
+            # Karşıla butonuna basıldığında o ID'ye ait durumu günceller
+            if st.button("✅ Karşıla", key=f"btn_{row['ID']}"):
+                st.session_state.istekler.loc[st.session_state.istekler['ID'] == row['ID'], 'DURUM'] = 'Tamamlandı ✅'
+                st.rerun() # Sayfayı yenileyip bildirimi kaldırır
+
+st.markdown("---")
+
+sekme_istek, sekme_grafik, sekme_genel = st.tabs([
+    "💬 İstekler & Görevler Paneli",
+    "📈 Aylık Grafikler",
+    "📊 Tüm Harcama Tablosu"
 ])
 
 df = st.session_state.harcamalar
 df_istek = st.session_state.istekler
 
 with sekme_istek:
-    st.subheader("Birbirimize İlettiğimiz Görevler")
+    st.subheader("Görev Geçmişi")
     if not df_istek.empty:
-        st.dataframe(df_istek, use_container_width=True)
-        if st.button("Tüm İstekleri Temizle"):
-            st.session_state.istekler = pd.DataFrame(columns=['KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
+        # ID sütununu ekranda kalabalık yapmasın diye gizleyerek gösteriyoruz
+        gosterilecek_istekler = df_istek.drop(columns=['ID'])
+        st.dataframe(gosterilecek_istekler, use_container_width=True)
+        if st.button("Tüm İstek Geçmişini Temizle"):
+            st.session_state.istekler = pd.DataFrame(columns=['ID', 'KİMDEN', 'KİME', 'İSTEK', 'DURUM'])
             st.rerun()
     else:
-        st.info("Şu an bekleyen bir istek veya alınacak malzeme yok.")
+        st.info("Şu an bekleyen veya tamamlanmış bir istek yok.")
 
 with sekme_grafik:
     st.subheader("Aylık Harcama Raporu")
@@ -107,12 +131,3 @@ with sekme_genel:
             st.rerun()
     else:
         st.info("Henüz sisteme harcama kaydedilmedi.")
-
-with sekme_market:
-    st.subheader("Sadece Market Harcamaları")
-    df_market = df[df['KATEGORİ'] == 'MARKET']
-    if not df_market.empty:
-        st.metric("Market Toplamı", f"{df_market['TUTAR'].sum():,.2f} TL")
-        st.dataframe(df_market, use_container_width=True)
-    else:
-        st.warning("Henüz market kategorisinde girdi yok.")
