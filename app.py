@@ -62,7 +62,10 @@ if uploaded_file is not None:
             st.subheader("Kategori Dağılımı")
             kat_ozet = df.groupby('KATEGORİ')['TUTAR'].sum()
             fig1, ax1 = plt.subplots()
-            ax1.pie(kat_ozet, labels=kat_ozet.index, autopct='%1.1f%%', startangle=140, cmap='Set2')
+            
+            # HATA BURADAYDI: Matplotlib yerine Pandas çizicisi kullandık
+            kat_ozet.plot(kind='pie', ax=ax1, autopct='%1.1f%%', startangle=140, cmap='Set2')
+            ax1.set_ylabel('') # Y eksenindeki çirkin "TUTAR" yazısını siler
             st.pyplot(fig1)
 
         with col2:
@@ -70,7 +73,6 @@ if uploaded_file is not None:
             # Sadece Market kategorisini filtrele
             market_df = df[df['KATEGORİ'] == 'MARKET']
             if not market_df.empty:
-                # Aynı isimli yerleri birleştir
                 market_ozet = market_df.groupby('AÇIKLAMA')['TUTAR'].sum().sort_values(ascending=True)
                 fig2, ax2 = plt.subplots()
                 market_ozet.plot(kind='barh', ax=ax2, color='skyblue')
